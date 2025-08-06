@@ -1,0 +1,15 @@
+# 1 สร้างโฟลเดอร์สำหรับเว็บ
+sudo mkdir -p /var/www/mitrphol
+
+# 2 คัดลอกไฟล์ frontend ไปไว้ที่นี่
+sudo rsync -av /root/full-mitrphol-ml-v2/ /var/www/mitrphol/
+
+# 3 ให้สิทธิ์อ่าน/เข้าโฟลเดอร์แก่ Nginx (www-data)
+sudo chown -R www-data:www-data /var/www/mitrphol
+# หรืออย่างน้อยให้อ่านได้:
+# sudo chmod -R o+rX /var/www/mitrphol
+
+# 4 ตรวจสอบว่ามีไฟล์ /var/www/mitrphol/index.html จริง
+ls -l /var/www/mitrphol/index.html
+
+

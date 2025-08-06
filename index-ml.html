@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Machine Learning Prediction Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;background:linear-gradient(135deg,#e3f2fd 0%,#fff 100%);color:#333;line-height:1.6}
+    .container{max-width:1400px;margin:0 auto;padding:20px}
+    .header{text-align:center;margin-bottom:30px;background:#fff;padding:30px;border-radius:15px;box-shadow:0 8px 32px rgba(0,0,0,.1)}
+    .header h1{color:#1976d2;font-size:2.5em;margin-bottom:10px;font-weight:300}
+    .header p{color:#666;font-size:1.1em}
+    .controls{display:flex;justify-content:center;gap:20px;margin-bottom:30px;background:#fff;padding:25px;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.08);align-items:flex-end}
+    .form-group{display:flex;flex-direction:column}
+    .form-group label{color:#1976d2;font-weight:500;margin-bottom:8px;font-size:.95em}
+    .form-group select{padding:12px 20px;border:2px solid #e3f2fd;border-radius:8px;font-size:14px;transition:.3s;background:#fafafa;min-width:180px}
+    .form-group select:focus{outline:none;border-color:#1976d2;background:#fff;transform:translateY(-1px);box-shadow:0 4px 12px rgba(25,118,210,.15)}
+    .content-grid{display:flex;flex-direction:column;gap:25px;margin-bottom:30px}
+    .stats-container{background:#fff;border-radius:15px;padding:25px;box-shadow:0 8px 32px rgba(0,0,0,.12);width:100%}
+    .map-section{display:flex;flex-direction:column;gap:15px}
+    .zone-filter{background:#fff;border-radius:15px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,.08)}
+    .zone-filter h3{color:#1976d2;margin-bottom:15px;font-size:1.2em;text-align:center}
+    .zone-buttons{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+    .zone-btn{padding:8px 16px;border:2px solid #e3f2fd;background:#f8f9fa;color:#1976d2;border-radius:20px;cursor:pointer;font-size:.85em;font-weight:500;transition:.2s}
+    .zone-btn:hover{background:#e3f2fd;transform:translateY(-1px)}
+    .zone-btn.active{background:#1976d2;color:#fff;border-color:#1976d2}
+    .map-container{background:#fff;border-radius:15px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.12);position:relative}
+    #map{height:600px;width:100%}
+    .map-info{position:absolute;top:10px;left:10px;background:rgba(255,255,255,.95);padding:10px 15px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1);z-index:1000;font-size:.9em}
+    .stats-title{color:#1976d2;font-size:1.4em;margin-bottom:20px;text-align:center;font-weight:300}
+    .loading{text-align:center;padding:40px;color:#1976d2}
+    .loading-spinner{display:inline-block;width:40px;height:40px;border:4px solid #e3f2fd;border-radius:50%;border-top-color:#1976d2;animation:spin 1s ease-in-out infinite;margin-bottom:15px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error{background:#ffebee;border:1px solid #e57373;color:#c62828;padding:15px;border-radius:8px;margin:20px 0}
+    .legend{position:absolute;bottom:20px;right:20px;background:rgba(255,255,255,.95);padding:15px;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,.2);z-index:1000}
+    .legend h4{margin-bottom:10px;color:#1976d2;font-size:.9em;text-align:center}
+    .legend-item{display:flex;align-items:center;margin-bottom:5px}
+    .legend-color{width:16px;height:16px;border-radius:50%;margin-right:8px;border:2px solid rgba(0,0,0,.2)}
+    .legend-color.high{background-color:#4caf50}.legend-color.medium{background-color:#f57c00}.legend-color.low{background-color:#d32f2f}
+    .viewport-info{position:absolute;bottom:20px;left:20px;background:rgba(255,255,255,.95);padding:10px 15px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1);z-index:1000;font-size:.85em;color:#666}
+    .leaflet-control-locate{background:#1976d2;color:#fff;border-radius:8px;padding:8px 12px;font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+    .leaflet-control-locate:disabled{background:#999;cursor:not-allowed}
+    .progress-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:10000;display:flex;align-items:center;justify-content:center}
+    .progress-container{background:#fff;border-radius:15px;padding:30px 40px;min-width:400px;box-shadow:0 10px 40px rgba(0,0,0,.3)}
+    .progress-title{font-size:1.3em;color:#1976d2;margin-bottom:20px;text-align:center;font-weight:500}
+    .progress-steps{margin-bottom:15px}
+    .progress-step{display:flex;align-items:center;padding:10px;margin-bottom:8px;border-radius:8px;background:#f5f5f5;transition:.3s}
+    .progress-step.active{background:#e3f2fd;border-left:4px solid #1976d2}
+    .progress-step.completed{background:#e8f5e9;border-left:4px solid #4caf50}
+    .progress-step-icon{width:24px;height:24px;margin-right:12px;display:flex;align-items:center;justify-content:center}
+    .progress-step-text{flex:1;color:#333}
+    .progress-step.active .progress-step-text{color:#1976d2;font-weight:500}
+    .progress-step.completed .progress-step-text{color:#4caf50}
+    .progress-info{text-align:center;color:#666;font-size:.9em;margin-top:15px}
+    @media (max-width:1024px){.controls{flex-direction:column;align-items:center}.zone-buttons{justify-content:center}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>ML Prediction Dashboard</h1>
+      <p>Visualize and analyze machine learning predictions with interactive maps and statistics</p>
+    </div>
+
+    <div class="controls">
+      <div class="form-group">
+        <label for="monthSelect">Select Month</label>
+        <select id="monthSelect" onchange="onMonthChange()">
+          <option value="12-2025-m12">December 2025</option>
+          <option value="1-2025-m1">January 2025</option>
+          <option value="2-2025-m2">February 2025</option>
+          <option value="3-2025-m3">March 2025</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="content-grid">
+      <div class="stats-container">
+        <div class="stats-title">Statistics Dashboard</div>
+        <div id="statsContent">
+          <div class="loading">
+            <div class="loading-spinner"></div>
+            Loading statistics...
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-container">
+        <div id="averagesContent">
+          <div class="loading">
+            <div class="loading-spinner"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-section">
+        <div class="zone-filter">
+          <h3>Zone Filter</h3>
+          <div class="zone-buttons">
+            <button class="zone-btn active" data-zone="ALL">All Zones</button>
+            <button class="zone-btn" data-zone="MAC">MAC</button>
+            <button class="zone-btn" data-zone="MKB">MKB</button>
+            <button class="zone-btn" data-zone="MKS">MKS</button>
+            <button class="zone-btn" data-zone="MPDC">MPDC</button>
+            <button class="zone-btn" data-zone="MPK">MPK</button>
+            <button class="zone-btn" data-zone="MPL">MPL</button>
+            <button class="zone-btn" data-zone="MPV">MPV</button>
+            <button class="zone-btn" data-zone="SB">SB</button>
+          </div>
+        </div>
+
+        <div class="map-container">
+          <div id="map"></div>
+          <div class="map-info">
+            <div id="currentModel">Model: m12</div>
+            <div id="currentMonth">Month: December 2025</div>
+            <div id="currentDataYear" style="font-size:0.85em;color:#666;">Data: 2025 (M2-M8)</div>
+          </div>
+          <div class="viewport-info">
+            <div id="viewportInfo">Move map to load data</div>
+          </div>
+          <div class="legend" id="mapLegend">
+            <h4>Prediction Levels</h4>
+            <div class="legend-item"><div class="legend-color high"></div><span id="legendHigh">High (&gt; 12.0)</span></div>
+            <div class="legend-item"><div class="legend-color medium"></div><span id="legendMedium">Medium (10.0 - 12.0)</span></div>
+            <div class="legend-item"><div class="legend-color low"></div><span id="legendLow">Low (&lt; 10.0)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Progress Overlay -->
+  <div id="progressOverlay" class="progress-overlay" style="display:none;">
+    <div class="progress-container">
+      <div class="progress-title">Loading Data...</div>
+      <div class="progress-steps">
+        <div class="progress-step" data-step="averages">
+          <div class="progress-step-icon"><div class="loading-spinner" style="width:20px;height:20px;border-width:3px;margin:0"></div></div>
+          <div class="progress-step-text">Loading Individual Models Performance (Using Cache)</div>
+        </div>
+        <div class="progress-step" data-step="statistics">
+          <div class="progress-step-icon"><div class="loading-spinner" style="width:20px;height:20px;border-width:3px;margin:0"></div></div>
+          <div class="progress-step-text">Loading Statistics Dashboard for Selected Model</div>
+        </div>
+        <div class="progress-step" data-step="map">
+          <div class="progress-step-icon"><div class="loading-spinner" style="width:20px;height:20px;border-width:3px;margin:0"></div></div>
+          <div class="progress-step-text">Preparing Map (Move to Load Data)</div>
+        </div>
+      </div>
+      <div class="progress-info" id="progressInfo">Step 1: Loading Individual Models Performance (all models with their features)
+Step 2: Loading Statistics for your selected model
+Step 3: Map ready - move the map to load predictions</div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <script>
+    // Global configuration (will be loaded from API)
+    let appConfig = null;
+
+    // Application state
+    let map, markersLayer, factoryMarkersLayer;
+    let allPredictionsData = [];
+    let currentZoneFilter = 'ALL';
+    let currentModel = 'm12';
+    let currentDisplayMonth = 12;
+    let currentYear = 2025;
+    let isLoading = false;
+    let userLocationMarker = null;
+    let moveDebounceTimer = null;
+
+    let allowMapRequests = false;
+    let isSequenceRunning = false;
+
+    // Load configuration from backend
+    async function loadConfig() {
+      try {
+        const resp = await fetch('/config');
+        const data = await resp.json();
+        if (data.success) {
+          appConfig = data.config;
+          console.log('Configuration loaded:', appConfig);
+          updateLegendLabels();
+          return true;
+        }
+      } catch (err) {
+        console.error('Failed to load config:', err);
+        // Use default config
+        appConfig = {
+          map_display_limit: 1000,
+          max_records_per_month: 500000,
+          prediction_thresholds: { HIGH_MIN: 12.0, MEDIUM_MIN: 10.0 },
+          viewport: { default_center: [14.5, 101.0], default_zoom: 17 }
+        };
+      }
+      return false;
+    }
+
+    // Update legend labels based on config
+    function updateLegendLabels() {
+      if (!appConfig?.prediction_thresholds) return;
+
+      const t = appConfig.prediction_thresholds;
+      const highEl = document.getElementById('legendHigh');
+      const mediumEl = document.getElementById('legendMedium');
+      const lowEl = document.getElementById('legendLow');
+
+      if (highEl) highEl.textContent = `High (> ${t.HIGH_MIN})`;
+      if (mediumEl) mediumEl.textContent = `Medium (${t.MEDIUM_MIN} - ${t.HIGH_MIN})`;
+      if (lowEl) lowEl.textContent = `Low (< ${t.MEDIUM_MIN})`;
+    }
+
+    // Progress tracking
+    function showProgress() {
+      const overlay = document.getElementById('progressOverlay');
+      overlay.style.display = 'flex';
+      // Reset all steps
+      document.querySelectorAll('.progress-step').forEach(step => {
+        step.classList.remove('active', 'completed');
+        step.querySelector('.progress-step-icon').innerHTML = '<div class="loading-spinner" style="width:20px;height:20px;border-width:3px;margin:0"></div>';
+      });
+    }
+
+    function hideProgress() {
+      document.getElementById('progressOverlay').style.display = 'none';
+    }
+
+    function setStepActive(stepName) {
+      const step = document.querySelector(`.progress-step[data-step="${stepName}"]`);
+      if (step) {
+        step.classList.add('active');
+        step.querySelector('.progress-step-icon').innerHTML = '<div class="loading-spinner" style="width:20px;height:20px;border-width:3px;margin:0"></div>';
+      }
+    }
+
+    function setStepCompleted(stepName) {
+      const step = document.querySelector(`.progress-step[data-step="${stepName}"]`);
+      if (step) {
+        step.classList.remove('active');
+        step.classList.add('completed');
+        step.querySelector('.progress-step-icon').innerHTML = '✓';
+      }
+    }
+
+    function updateProgressInfo(text) {
+      document.getElementById('progressInfo').textContent = text;
+    }
+
+    // Store opened popup state
+    let openedPopupData = null;
+    let openedPopupLatLng = null;
+
+    // Prevent duplicate requests
+    let isLoadingStatistics = false;
+    let statisticsAbortController = null;
+
+    const API_BASE = 'http://localhost:1290';
+
+    const factoryLocations = {
+      SB:{lat:14.862504078842958,lng:100.358549932741414},
+      MPDC:{lat:14.84514,lng:99.75922},
+      MAC:{lat:15.828701000429223,lng:104.47471520283926},
+      MPV:{lat:16.67827120388637,lng:102.44576336099253},
+      MPL:{lat:7.067065149704857,lng:117.59963900704362},
+      MPK:{lat:16.4840064769643,lng:102.1212705588527},
+      MKS:{lat:16.462588608501633,lng:104.04029264983633},
+      MKB:{lat:16.096672809152835,lng:101.87271858619893}
+    };
+
+    const zoneColors = {
+      'MAC':'#e91e63','MKB':'#9c27b0','MKS':'#673ab7','MPDC':'#3f51b5',
+      'MPK':'#2196f3','MPL':'#00bcd4','MPV':'#009688','SB':'#4caf50'
+    };
+
+    // ====== Map init ======
+    function initMap(){
+      const center = appConfig?.viewport?.default_center || [14.5, 101.0];
+      const zoom = appConfig?.viewport?.default_zoom || 17;
+      const maxZoom = appConfig?.viewport?.max_zoom || 19;
+
+      map = L.map('map').setView(center, zoom);
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+        attribution:'&copy; Esri', maxZoom: maxZoom
+      }).addTo(map);
+
+      markersLayer = L.layerGroup().addTo(map);
+      factoryMarkersLayer = L.layerGroup().addTo(map);
+      addFactoryMarkers();
+
+      // Locate button control
+      const LocateControl = L.Control.extend({
+        options:{ position:'topright' },
+        onAdd:function(){
+          const btn = L.DomUtil.create('button','leaflet-control-locate');
+          btn.type='button';
+          btn.innerHTML='📍 Find my location';
+          btn.onclick=()=>findMyLocation(btn);
+          return btn;
+        }
+      });
+      map.addControl(new LocateControl());
+
+      // Debounced move handler — จะทำงานเฉพาะเมื่อ allowMapRequests = true
+      map.on('moveend zoomend', ()=>{
+        if (!allowMapRequests) return;
+        if (moveDebounceTimer) clearTimeout(moveDebounceTimer);
+        moveDebounceTimer = setTimeout(loadPredictionsForCurrentView, 350);
+      });
+    }
+
+    function addFactoryMarkers(){
+      Object.entries(factoryLocations).forEach(([zoneName, loc])=>{
+        const factoryIcon = L.divIcon({
+          html:`<div style="
+              width:32px;height:32px;background-image:url('./manufacturing-plant.png');
+              background-size:contain;background-repeat:no-repeat;background-position:center;
+              border:2px solid ${zoneColors[zoneName]||'#1976d2'};
+              border-radius:50%;background-color:#fff;"></div>`,
+          className:'factory-marker', iconSize:[32,32], iconAnchor:[16,16]
+        });
+        const marker = L.marker([loc.lat,loc.lng],{icon:factoryIcon,zIndexOffset:1000});
+        marker.bindPopup(`
+          <div style="text-align:center;">
+            <h4 style="margin:0 0 8px;color:${zoneColors[zoneName]||'#1976d2'}">${zoneName} Factory</h4>
+            <div style="font-size:.9em">${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)}</div>
+          </div>
+        `);
+        factoryMarkersLayer.addLayer(marker);
+      });
+    }
+
+    function findMyLocation(btn){
+      const b = btn || document.querySelector('.leaflet-control-locate');
+      if (!navigator.geolocation){ alert('Geolocation is not supported.'); return; }
+      b.disabled = true; b.textContent = '📍 Locating...';
+      navigator.geolocation.getCurrentPosition(pos=>{
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        if (userLocationMarker) map.removeLayer(userLocationMarker);
+        const userIcon = L.divIcon({
+          html:'<div style="width:20px;height:20px;background:#ff4444;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>',
+          iconSize:[20,20], iconAnchor:[10,10]
+        });
+        userLocationMarker = L.marker([lat,lng],{icon:userIcon,zIndexOffset:2000})
+          .bindPopup(`<div style="text-align:center;"><strong>Your Location</strong><div style="font-size:.9em">${lat.toFixed(6)}, ${lng.toFixed(6)}</div></div>`)
+          .addTo(map);
+        map.setView([lat,lng], 17);
+        b.disabled=false; b.textContent='📍 Find my location';
+      }, err=>{
+        alert('Unable to retrieve your location.');
+        b.disabled=false; b.textContent='📍 Find my location';
+      },{enableHighAccuracy:true,timeout:5000,maximumAge:0});
+    }
+
+    // ====== Orchestration with Progress ======
+    async function runInitialSequence(){
+      if (isSequenceRunning) return;
+      isSequenceRunning = true;
+      allowMapRequests = false;
+
+      showProgress();
+      updateProgressInfo('Starting initial data load...');
+
+      try {
+        // 1) Individual models performance (ดึงข้อมูลตาม features ของแต่ละ model ก่อน)
+        setStepActive('averages');
+        updateProgressInfo('Loading Individual Models Performance (with feature-based cache)...');
+        await loadCombinedAverages();
+        setStepCompleted('averages');
+
+        // 2) Statistics dashboard (ดึงข้อมูลสำหรับ model ที่เลือกเท่านั้น)
+        setStepActive('statistics');
+        updateProgressInfo(`Loading statistics for selected model ${currentModel.toUpperCase()}...`);
+        await loadStatistics();
+        setStepCompleted('statistics');
+
+        // 3) เปิดใช้งาน map requests (ให้ user เลื่อนแผนที่เองเพื่อ load ข้อมูล)
+        setStepActive('map');
+        updateProgressInfo('Map ready - move map to load data...');
+        allowMapRequests = true;
+        updateViewportInfo('Move map to load data');
+        setStepCompleted('map');
+
+        updateProgressInfo('All data loaded successfully! Move the map to view predictions.');
+        setTimeout(hideProgress, 500);
+      } catch (err) {
+        updateProgressInfo('Error loading data: ' + err.message);
+        setTimeout(hideProgress, 2000);
+      } finally {
+        isSequenceRunning = false;
+      }
+    }
+
+    async function runChangeSequence(){
+      if (isSequenceRunning) return;
+      isSequenceRunning = true;
+      allowMapRequests = false;
+
+      showProgress();
+      updateProgressInfo('Updating data for selected month...');
+
+      try {
+        // Clear existing map markers
+        markersLayer.clearLayers();
+        allPredictionsData = [];
+        updateViewportInfo('Updating...');
+
+        // 1) Individual models performance (ใช้ cache ถ้ามีอยู่แล้ว)
+        setStepActive('averages');
+        updateProgressInfo('Updating Individual Models Performance (using cache if available)...');
+        await loadCombinedAverages();
+        setStepCompleted('averages');
+
+        // 2) Statistics สำหรับ model ที่เลือก
+        setStepActive('statistics');
+        updateProgressInfo(`Updating statistics for ${currentModel.toUpperCase()}...`);
+        await loadStatistics();
+        setStepCompleted('statistics');
+
+        // 3) เปิดใช้งาน map requests (ให้ user เลื่อนแผนที่เพื่อ load ข้อมูลใหม่)
+        setStepActive('map');
+        updateProgressInfo('Map ready - move map to reload data...');
+        allowMapRequests = true;
+        updateViewportInfo('Move map to load new data');
+        setStepCompleted('map');
+
+        updateProgressInfo('Update complete! Move the map to reload predictions.');
+        setTimeout(hideProgress, 500);
+      } catch (err) {
+        updateProgressInfo('Error updating data: ' + err.message);
+        setTimeout(hideProgress, 2000);
+      } finally {
+        isSequenceRunning = false;
+      }
+    }
+
+    // ====== Month change ======
+    function onMonthChange(){
+      const [month, year, model] = document.getElementById('monthSelect').value.split('-');
+      currentDisplayMonth = parseInt(month, 10);  // ใช้เดือนที่เลือกจริง
+      currentYear = parseInt(year, 10);
+      currentModel = model;
+      document.getElementById('currentModel').textContent = `Model: ${model}`;
+      document.getElementById('currentMonth').textContent = `Month: ${getMonthName(currentDisplayMonth)} ${year}`;
+      allPredictionsData = [];
+      runChangeSequence();                // ใช้ orchestration ใหม่
+    }
+
+    function getMonthName(m){
+      return ['','January','February','March','April','May','June','July','August','September','October','November','December'][m]
+    }
+
+    // Zone buttons: filter + fly to factory location
+    document.addEventListener('DOMContentLoaded', async ()=>{
+      // โหลด config ก่อน
+      await loadConfig();
+
+      initMap();
+      // เริ่มโหลดแบบเรียงลำดับ
+      runInitialSequence();
+
+      const btns = document.querySelectorAll('.zone-btn');
+      btns.forEach(btn=>{
+        btn.addEventListener('click', function(){
+          btns.forEach(b=>b.classList.remove('active'));
+          this.classList.add('active');
+          currentZoneFilter = this.dataset.zone;
+          if (currentZoneFilter !== 'ALL' && factoryLocations[currentZoneFilter]){
+            const {lat,lng} = factoryLocations[currentZoneFilter];
+            map.flyTo([lat,lng], 17, {duration:0.7});
+          }
+          displayPredictionsInViewport();
+        });
+      });
+    });
+
+    // ====== Load predictions in viewport (with bbox) ======
+    async function loadPredictionsForCurrentView(){
+      if (isLoading) return;
+      if (!allowMapRequests) return;                // เคารพลำดับการโหลด
+      isLoading = true;
+      updateViewportInfo('Loading map data...');
+      try{
+        const {dataYear,startMonth,endMonth} = calculateDateRange(currentDisplayMonth,currentYear);
+
+        const b = map.getBounds();
+        // Use reasonable limit for viewport queries - limit based on zoom level
+        const zoom = map.getZoom();
+        let viewportLimit = 50000; // Default for zoomed in views
+        if (zoom < 8) viewportLimit = 100000;  // Zoomed out - allow more
+        if (zoom < 6) viewportLimit = 200000;  // Very zoomed out
+
+        const payload = {
+          year:dataYear, start_month:startMonth, end_month:endMonth,
+          models:[currentModel], zones:"MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB",
+          limit:viewportLimit, display_month:currentDisplayMonth, enable_chunked_processing:true,
+          min_lat:b.getSouth(), min_lng:b.getWest(), max_lat:b.getNorth(), max_lng:b.getEast()
+        };
+
+        const resp = await fetch(`/predict/grouped`,{
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message || 'Unknown error');
+
+        allPredictionsData = [];
+        if (data.results && data.results.length>0){
+          data.results[0].prediction_groups.forEach(g=>allPredictionsData.push(...g.predictions));
+        }
+
+        // Deduplicate by plant_id - keep only one record per plant
+        const uniquePredictions = new Map();
+        allPredictionsData.forEach(p => {
+          const plantId = p.plant_id || `${p.lat}_${p.lon}`;
+          // Keep the first occurrence or you can choose based on criteria
+          // Option 1: Keep first
+          if (!uniquePredictions.has(plantId)) {
+            uniquePredictions.set(plantId, p);
+          }
+          // Option 2: Keep highest prediction (uncomment below to use)
+          // const existing = uniquePredictions.get(plantId);
+          // if (!existing || p.prediction > existing.prediction) {
+          //   uniquePredictions.set(plantId, p);
+          // }
+        });
+        allPredictionsData = Array.from(uniquePredictions.values());
+        console.log(`Deduplicated: ${allPredictionsData.length} unique plants`);
+
+        displayPredictionsInViewport();
+      }catch(err){
+        console.error('Error loading predictions:', err);
+        showError(`Failed to load predictions: ${err.message}`);
+        updateViewportInfo('Not found data for current view');
+      }finally{
+        isLoading = false;
+      }
+    }
+
+    function displayPredictionsInViewport(){
+      // Save current popup state before clearing
+      const wasPopupOpen = openedPopupData !== null;
+      const savedPopupPlantId = openedPopupData ? openedPopupData.plant_id : null;
+
+      markersLayer.clearLayers();
+      const bounds = map.getBounds();
+      const filtered = allPredictionsData.filter(p=>{
+        const inBounds = bounds.contains([p.lat, p.lon]);
+        const inZone = (currentZoneFilter==='ALL') || (p.zone===currentZoneFilter);
+        return inBounds && inZone;
+      });
+
+      const limited = filtered.slice(0,1000);
+      let count = 0;
+      let reopenMarker = null;
+
+      limited.forEach(p=>{
+        const color = getPredictionColor(p.prediction);
+        const level = getPredictionLevel(p.prediction);
+        const marker = L.circleMarker([p.lat, p.lon],{
+          radius:4, fillColor:color, color:'#fff', weight:1, opacity:1, fillOpacity:0.8
+        });
+
+        const popupContent = `
+          <div style="font-family:Arial,sans-serif;max-width:300px;">
+            <h4 style="margin:0 0 8px;color:#1976d2;border-bottom:2px solid #1976d2;padding-bottom:5px;">Farm Details</h4>
+            <p style="margin:4px 0;"><strong>🆔 Farm ID (f_id):</strong> ${p.f_id || p.plant_id || 'N/A'}</p>
+            <p style="margin:4px 0;"><strong>📋 GIS ID:</strong> ${p.gis_id || 'N/A'}</p>
+            <p style="margin:4px 0;"><strong>📋 Quota ID:</strong> ${p.qoata_id || 'N/A'}</p>
+            <p style="margin:4px 0;"><strong>👤 เกษตรกร:</strong> ${(p.farmmer_pre || '') + ' ' + (p.farmmer_first_name || '') + ' ' + (p.farmmer_last_name || '')}</p>
+            <p style="margin:4px 0;"><strong>📐 พื้นที่:</strong> ${p.gis_area ? p.gis_area.toFixed(2) + ' ไร่' : 'N/A'}</p>
+            <p style="margin:4px 0;"><strong>📅 ปีเพาะปลูก:</strong> ${p.crop_year || 'N/A'}</p>
+            <p style="margin:4px 0;"><strong>🏭 โรงงาน:</strong> ${p.factory || p.zone}</p>
+            <p style="margin:4px 0;"><strong>🗺️ โซน:</strong> ${p.zone}</p>
+            <p style="margin:4px 0;"><strong>📍 โซนย่อย:</strong> ${p.sub_zone || 'N/A'}</p>
+            <p style="margin:4px 0;"><strong>🌱 ประเภทอ้อย:</strong> ${p.cane_type}</p>
+            <p style="margin:4px 0;"><strong>🌿 ประเภทอ้อย (GIS):</strong> ${p.gis_cane_type || 'N/A'}</p>
+            <p style="margin:4px 0;"><strong>📍 พิกัด:</strong> ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}</p>
+            <hr style="margin:8px 0;border:none;border-top:1px solid #ddd;">
+            <h4 style="margin:8px 0 4px;color:#4caf50;">ML Prediction</h4>
+            <p style="margin:4px 0;"><strong>Model:</strong> ${currentModel}</p>
+            <p style="margin:4px 0;"><strong>Prediction:</strong> ${p.prediction.toFixed(2)}</p>
+            <p style="margin:4px 0;"><strong>Level:</strong> <span style="color:${color};font-weight:bold">${level}</span></p>
+            <p style="margin:4px 0;"><strong>📅 Data Year:</strong> ${p.year || 'N/A'}</p>
+            <p style="margin:4px 0;"><strong>📆 Data Month:</strong> ${p.month || 'N/A'}</p>
+            <hr style="margin:8px 0;border:none;border-top:1px solid #ddd;">
+            <h4 style="margin:8px 0 4px;color:#2196f3;">Satellite Data</h4>
+            <p style="margin:4px 0;"><strong>NDVI:</strong> ${p.ndvi.toFixed(3)}</p>
+            <p style="margin:4px 0;"><strong>NDWI:</strong> ${p.ndwi.toFixed(3)}</p>
+            <p style="margin:4px 0;"><strong>GLI:</strong> ${p.gli.toFixed(3)}</p>
+            <p style="margin:4px 0;"><strong>Precipitation:</strong> ${p.precipitation.toFixed(2)}</p>
+          </div>
+        `;
+
+        marker.bindPopup(popupContent, {
+          closeButton: true,
+          autoClose: false,
+          closeOnClick: false
+        });
+
+        // Track when popup opens
+        marker.on('popupopen', function(e) {
+          openedPopupData = p;
+          openedPopupLatLng = [p.lat, p.lon];
+          console.log('Popup opened for plant_id:', p.plant_id);
+        });
+
+        // Track when popup closes (only by user action)
+        marker.on('popupclose', function(e) {
+          // Use a small delay to distinguish between manual close and refresh
+          setTimeout(() => {
+            // If popup is still showing the same plant_id, it's a refresh - don't clear
+            // Only clear if it's a genuine user close
+            const currentOpenedPlantId = openedPopupData ? openedPopupData.plant_id : null;
+            if (currentOpenedPlantId === p.plant_id && !map.hasLayer(marker)) {
+              // Marker was removed (refresh), keep the state
+              return;
+            }
+            if (currentOpenedPlantId === p.plant_id) {
+              openedPopupData = null;
+              openedPopupLatLng = null;
+              console.log('Popup manually closed for plant_id:', p.plant_id);
+            }
+          }, 50);
+        });
+
+        // Check if this marker should reopen popup
+        if (wasPopupOpen && savedPopupPlantId === p.plant_id) {
+          reopenMarker = marker;
+          // Update openedPopupData with fresh data
+          openedPopupData = p;
+          console.log('Found marker to reopen:', p.plant_id);
+        }
+
+        markersLayer.addLayer(marker);
+        count++;
+      });
+
+      // Reopen popup if it was open before
+      if (reopenMarker) {
+        console.log('Reopening popup...');
+        setTimeout(() => {
+          reopenMarker.openPopup();
+        }, 150);
+      }
+
+      updateViewportInfo(`Showing ${count}/${filtered.length} points (${allPredictionsData.length} total)`);
+    }
+
+    function updateViewportInfo(t){ document.getElementById('viewportInfo').textContent = t; }
+
+    function calculateDateRange(selectedMonth, selectedYear){
+      // ใช้ config จาก backend: month range 2-8 สำหรับทุก model ในปี 2025
+      return {
+        dataYear: selectedYear,
+        startMonth: 2,
+        endMonth: 8
+      };
+    }
+
+    function getPredictionColor(v){
+      const thresholds = appConfig?.prediction_thresholds || { HIGH_MIN: 12.0, MEDIUM_MIN: 10.0 };
+      if (v > thresholds.HIGH_MIN) return '#4caf50';
+      if (v >= thresholds.MEDIUM_MIN) return '#f57c00';
+      return '#d32f2f';
+    }
+
+    function getPredictionLevel(v){
+      const thresholds = appConfig?.prediction_thresholds || { HIGH_MIN: 12.0, MEDIUM_MIN: 10.0 };
+      if (v > thresholds.HIGH_MIN) return 'HIGH';
+      if (v >= thresholds.MEDIUM_MIN) return 'MEDIUM';
+      return 'LOW';
+    }
+
+    // เก็บข้อมูล Individual Models Performance ไว้ใช้
+    let cachedIndividualModelsData = null;
+
+    // ===== Statistics (NO BBOX) — ใช้ข้อมูลจาก Individual Models Performance =====
+    // ขั้นตอนที่ 2: ใช้ข้อมูลที่ได้จาก Individual Models Performance แทนการดึงใหม่
+    async function loadStatistics(){
+      // Prevent duplicate requests
+      if (isLoadingStatistics) {
+        console.log('Statistics already loading, skipping duplicate request');
+        return;
+      }
+
+      isLoadingStatistics = true;
+      const statsContent = document.getElementById('statsContent');
+      statsContent.innerHTML = `<div class="loading"><div class="loading-spinner"></div><p>Loading statistics for model ${currentModel.toUpperCase()}...</p>`;
+
+      try{
+        // ใช้ข้อมูลจาก Individual Models Performance ที่มีอยู่แล้ว
+        if (cachedIndividualModelsData && cachedIndividualModelsData.individual_model_results) {
+          const modelData = cachedIndividualModelsData.individual_model_results.find(
+            m => m.model_name === currentModel
+          );
+
+          if (modelData && modelData.zone_statistics && modelData.zone_statistics.length > 0) {
+            // ใช้ zone_statistics ที่ได้จาก backend โดยตรง
+            console.log('Using cached zone statistics for model:', currentModel);
+
+            displayModelStatistics({
+              zone_statistics: modelData.zone_statistics,
+              overall_average: modelData.overall_average || 0,
+              total_predictions: modelData.total_predictions || 0
+            });
+
+            isLoadingStatistics = false;
+            return;
+          }
+        }
+
+        // Fallback: ถ้าไม่มี cache หรือไม่มี zone_statistics ให้ดึงข้อมูลใหม่
+        console.log('No cached zone statistics found, fetching from server...');
+        const {dataYear,startMonth,endMonth} = calculateDateRange(currentDisplayMonth,currentYear);
+
+        statisticsAbortController = new AbortController();
+        const timeoutId = setTimeout(() => statisticsAbortController.abort(), 600000); // เพิ่ม timeout เป็น 10 นาที
+
+        // ลด limit ลงเหลือ 200k แทน 500k เพื่อลด timeout
+        const resp = await fetch(`/predict/grouped`,{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            year:dataYear, start_month:startMonth, end_month:endMonth,
+            models:[currentModel], zones:"MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB",
+            limit:200000, display_month:currentDisplayMonth, enable_chunked_processing:true
+          }),
+          signal: statisticsAbortController.signal
+        });
+        clearTimeout(timeoutId);
+        statisticsAbortController = null;
+
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        const data = await resp.json();
+        if (!data.success || !data.results || data.results.length===0){
+          throw new Error(data.message || 'No data available for current model');
+        }
+
+        const modelRes = data.results[0];
+        const flatPreds = [];
+        (modelRes.prediction_groups||[]).forEach(g => {
+          (g.predictions||[]).forEach(p => flatPreds.push(p));
+        });
+        const zoneStats = buildZoneStatsFromPredictions(flatPreds);
+
+        displayModelStatistics({
+          zone_statistics: zoneStats,
+          overall_average: modelRes.overall_average ?? calcOverallAverage(flatPreds),
+          total_predictions: flatPreds.length
+        });
+      }catch(err){
+        console.error('Error loading model statistics:', err);
+        if (err.name === 'AbortError') {
+          if (!isLoadingStatistics) return; // Request was replaced by a new one
+          statsContent.innerHTML = `<div class="error">Request timed out. Try refreshing the page or contact support.</div>`;
+        } else {
+          statsContent.innerHTML = `<div class="error">Failed to load statistics: ${err.message}</div>`;
+        }
+      } finally {
+        isLoadingStatistics = false;
+      }
+    }
+
+    function buildZoneStatsFromPredictions(predictions){
+      const byZone = {};
+      predictions.forEach(p=>{
+        const z = p.zone || 'Unknown';
+        if (!byZone[z]){
+          byZone[z] = { zone:z, total_plantations:0, high:0, medium:0, low:0, sum:0 };
+        }
+        byZone[z].total_plantations++;
+        byZone[z].sum += p.prediction || 0;
+        if (p.prediction > 12) byZone[z].high++;
+        else if (p.prediction >= 10) byZone[z].medium++;
+        else byZone[z].low++;
+      });
+
+      const out = Object.values(byZone).map(v=>{
+        const total = v.total_plantations || 0;
+        return {
+          zone: v.zone,
+          high_prediction_count: v.high,
+          high_prediction_percentage: total ? (v.high/total*100) : 0,
+          medium_prediction_count: v.medium,
+          medium_prediction_percentage: total ? (v.medium/total*100) : 0,
+          low_prediction_count: v.low,
+          low_prediction_percentage: total ? (v.low/total*100) : 0,
+          total_plantations: total,
+          average_prediction: total ? (v.sum/total) : 0
+        };
+      }).sort((a,b)=>a.zone.localeCompare(b.zone));
+
+      return out;
+    }
+
+    function calcOverallAverage(predictions){
+      if (!predictions.length) return 0;
+      const s = predictions.reduce((acc,p)=>acc+(p.prediction||0),0);
+      return s / predictions.length;
+    }
+
+    // ===== Combined averages (NO BBOX) =====
+    // ขั้นตอนที่ 1: ดึงข้อมูล Individual models performance (ใช้ cache ตาม features ของแต่ละ model)
+    async function loadCombinedAverages(){
+      const el = document.getElementById('averagesContent');
+      el.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading Individual Models Performance...</p>';
+      try{
+        // เรียก endpoint ใหม่สำหรับ Individual models performance
+        const resp = await fetch(`/predict/individual-models-performance?year=${currentYear}&start_month=2&end_month=8&models=m1,m2,m3,m12&zones=MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB&display_month=8`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message || 'Unknown error occurred');
+
+        // เก็บข้อมูลไว้ใช้สำหรับ Statistics Dashboard
+        cachedIndividualModelsData = data;
+        console.log('Cached Individual Models Data:', cachedIndividualModelsData);
+
+        displayCombinedAverages(data);
+      }catch(err){
+        console.error('Error loading individual models performance:', err);
+        el.innerHTML = `<div class="error">Failed to load individual models performance: ${err.message}</div>`;
+      }
+    }
+
+    function displayCombinedAverages(data){
+      const averagesContent = document.getElementById('averagesContent');
+      const combined = data.combined_average_result;
+      const individual = data.individual_model_results;
+      const zoneColorsLocal = zoneColors;
+
+      averagesContent.innerHTML = `
+        <div style="margin-bottom:20px;">
+          <h4 style="color:#1976d2;text-align:center;margin-bottom:15px;">Individual Models Performance</h4>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;">
+            ${individual.map(m=>`
+              <div style="padding:10px;background:${m.model_name===currentModel?'#e3f2fd':'#f8f9fa'};border-radius:8px;border:${m.model_name===currentModel?'2px solid #1976d2':'1px solid #ddd'};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                  <span style="font-weight:bold;color:#1976d2;">${m.model_name.toUpperCase()}${m.model_name===currentModel?' (Current)':''}</span>
+                  <span style="font-weight:bold;color:#1976d2;">${m.overall_average.toFixed(2)}</span>
+                </div>
+                <div style="font-size:.8em;color:#666;">
+                  <span style="color:#4caf50;">High: ${m.high_percentage.toFixed(2)}%</span> |
+                  <span style="color:#f57c00;">Med: ${m.medium_percentage.toFixed(2)}%</span> |
+                  <span style="color:#d32f2f;">Low: ${m.low_percentage.toFixed(2)}%</span>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <h4 style="color:#1976d2;text-align:center;margin-bottom:15px;">Combined Zone Averages</h4>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;">
+            ${Object.entries(combined.combined_zone_averages).map(([z,avg])=>`
+              <div style="text-align:center;padding:8px;background:#f5f5f5;border-radius:6px;border-left:3px solid ${zoneColorsLocal[z]||'#1976d2'};">
+                <div style="font-weight:bold;color:#1976d2;font-size:.9em;">${z}</div>
+                <div style="font-weight:bold;color:#333;font-size:1.1em;">${(+avg).toFixed(2)}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <div style="padding:12px;background:#f8f9fa;border-radius:8px;border-left:4px solid #4caf50;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;font-size:.85em;">
+            <div><div style="color:#666;margin-bottom:3px;">Models Average:</div><div style="font-weight:bold;font-size:1.1em;color:#1976d2;">${(+combined.overall_average_of_models).toFixed(2)}</div></div>
+            <div><div style="color:#666;margin-bottom:3px;">Combined Average:</div><div style="font-weight:bold;font-size:1.1em;color:#1976d2;">${(+combined.combined_prediction_average).toFixed(2)}</div></div>
+            <div><div style="color:#666;margin-bottom:3px;">Best Model:</div><div style="font-weight:bold;color:#4caf50;">${combined.model_comparison.highest_average?.model_name?.toUpperCase()||'-'} (${(+combined.model_comparison.highest_average?.overall_average||0).toFixed(2)})</div></div>
+            <div><div style="color:#666;margin-bottom:3px;">Standard Deviation:</div><div style="font-weight:bold;color:#1976d2;">${(+combined.model_comparison.standard_deviation).toFixed(2)}</div></div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ====== Statistics rendering (uses client-built zone stats) ======
+    function displayModelStatistics(modelResultLike){
+      const statsContent = document.getElementById('statsContent');
+      const zoneStats = modelResultLike.zone_statistics || [];
+      const overallAvg = +modelResultLike.overall_average || 0;
+
+      if (!zoneStats.length){
+        statsContent.innerHTML = `<div class="error">No statistics available for current selection.</div>`;
+        return;
+      }
+
+      const best = zoneStats.reduce((best,z)=>z.average_prediction>best.average_prediction?z:best, zoneStats[0]);
+
+      statsContent.innerHTML = `
+        <div style="margin-top:15px;">
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:.8em;">
+              <thead>
+                <tr style="background:#f5f5f5;border-bottom:2px solid #1976d2;">
+                  <th style="padding:6px;text-align:left;color:#1976d2;">Zone</th>
+                  <th style="padding:6px;text-align:center;color:#1976d2;">Total</th>
+                  <th style="padding:6px;text-align:center;color:#4caf50;">High (&gt;12)</th>
+                  <th style="padding:6px;text-align:center;color:#f57c00;">Medium (10-12)</th>
+                  <th style="padding:6px;text-align:center;color:#d32f2f;">Low (&lt;10)</th>
+                  <th style="padding:6px;text-align:center;color:#1976d2;">Avg Prediction</th>
+                  <th style="padding:6px;text-align:center;color:#1976d2;">Performance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${zoneStats.map(z=>`
+                  <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:6px;font-weight:bold;">${z.zone}</td>
+                    <td style="padding:6px;text-align:center;">${z.total_plantations}</td>
+                    <td style="padding:6px;text-align:center;color:#4caf50;"><strong>${z.high_prediction_count}</strong> (${z.high_prediction_percentage.toFixed(2)}%)</td>
+                    <td style="padding:6px;text-align:center;color:#f57c00;"><strong>${z.medium_prediction_count}</strong> (${z.medium_prediction_percentage.toFixed(2)}%)</td>
+                    <td style="padding:6px;text-align:center;color:#d32f2f;"><strong>${z.low_prediction_count}</strong> (${z.low_prediction_percentage.toFixed(2)}%)</td>
+                    <td style="padding:6px;text-align:center;font-weight:bold;">${(+z.average_prediction).toFixed(2)}</td>
+                    <td style="padding:6px;text-align:center;">
+                      <div style="display:flex;width:100%;height:18px;background:#e0e0e0;border-radius:9px;overflow:hidden;">
+                        <div style="width:${z.high_prediction_percentage}%;background:#4caf50;height:100%"></div>
+                        <div style="width:${z.medium_prediction_percentage}%;background:#f57c00;height:100%"></div>
+                        <div style="width:${z.low_prediction_percentage}%;background:#d32f2f;height:100%"></div>
+                      </div>
+                      <div style="font-size:.7em;margin-top:2px;">
+                        <span style="color:#4caf50;">High: ${z.high_prediction_percentage.toFixed(2)}%</span> |
+                        <span style="color:#f57c00;">Med: ${z.medium_prediction_percentage.toFixed(2)}%</span> |
+                        <span style="color:#d32f2f;">Low: ${z.low_prediction_percentage.toFixed(2)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="margin-top:20px;padding:12px;background:#f8f9fa;border-radius:8px;border-left:4px solid #1976d2;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:.85em;">
+            <div>
+              <div style="color:#666;margin-bottom:3px;">Overall Average:</div>
+              <div style="font-weight:bold;font-size:1.1em;color:#1976d2;">${overallAvg.toFixed(2)}</div>
+            </div>
+            <div>
+              <div style="color:#666;margin-bottom:3px;">Best Performing Zone:</div>
+              <div style="font-weight:bold;color:#4caf50;">
+                ${best.zone} (${(+best.average_prediction).toFixed(2)})
+              </div>
+            </div>
+            <div>
+              <div style="color:#666;margin-bottom:3px;">Zones Analyzed:</div>
+              <div style="font-weight:bold;color:#1976d2;">${zoneStats.length} zones</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function showError(msg){
+      const d=document.createElement('div'); d.className='error'; d.textContent=msg;
+      const container=document.querySelector('.container');
+      container.insertBefore(d, container.firstChild.nextSibling);
+      setTimeout(()=>d.remove(), 10000);
+    }
+  </script>
+</body>
+</html>

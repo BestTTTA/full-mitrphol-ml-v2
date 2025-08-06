@@ -1,0 +1,7 @@
+nohup python3 main-ml.py > output.log 2>&1 &
+
+nohup bash -c 'while true; do python3 main-ml.py; echo "Process died, restarting in 5 seconds..."; sleep 5; done' > output.log 2>&1 &
+
+ps aux | grep main-ml.py
+kill <process_id>
+kill -9 <process_id>

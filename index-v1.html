@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Machine Learning Prediction Dashboard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;background:linear-gradient(135deg,#e3f2fd 0%,#fff 100%);color:#333;line-height:1.6}
+    .container{max-width:1400px;margin:0 auto;padding:20px}
+    .header{text-align:center;margin-bottom:30px;background:#fff;padding:30px;border-radius:15px;box-shadow:0 8px 32px rgba(0,0,0,.1)}
+    .header h1{color:#1976d2;font-size:2.5em;margin-bottom:10px;font-weight:300}
+    .header p{color:#666;font-size:1.1em}
+    .controls{display:flex;justify-content:center;gap:20px;margin-bottom:30px;background:#fff;padding:25px;border-radius:15px;box-shadow:0 4px 20px rgba(0,0,0,.08);align-items:flex-end}
+    .form-group{display:flex;flex-direction:column}
+    .form-group label{color:#1976d2;font-weight:500;margin-bottom:8px;font-size:.95em}
+    .form-group select{padding:12px 20px;border:2px solid #e3f2fd;border-radius:8px;font-size:14px;transition:.3s;background:#fafafa;min-width:180px}
+    .form-group select:focus{outline:none;border-color:#1976d2;background:#fff;transform:translateY(-1px);box-shadow:0 4px 12px rgba(25,118,210,.15)}
+    .content-grid{display:flex;flex-direction:column;gap:25px;margin-bottom:30px}
+    .stats-container{background:#fff;border-radius:15px;padding:25px;box-shadow:0 8px 32px rgba(0,0,0,.12);width:100%}
+    .map-section{display:flex;flex-direction:column;gap:15px}
+    .zone-filter{background:#fff;border-radius:15px;padding:20px;box-shadow:0 4px 20px rgba(0,0,0,.08)}
+    .zone-filter h3{color:#1976d2;margin-bottom:15px;font-size:1.2em;text-align:center}
+    .zone-buttons{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+    .zone-btn{padding:8px 16px;border:2px solid #e3f2fd;background:#f8f9fa;color:#1976d2;border-radius:20px;cursor:pointer;font-size:.85em;font-weight:500;transition:.2s}
+    .zone-btn:hover{background:#e3f2fd;transform:translateY(-1px)}
+    .zone-btn.active{background:#1976d2;color:#fff;border-color:#1976d2}
+    .map-container{background:#fff;border-radius:15px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.12);position:relative}
+    #map{height:600px;width:100%}
+    .map-info{position:absolute;top:10px;left:10px;background:rgba(255,255,255,.95);padding:10px 15px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1);z-index:1000;font-size:.9em}
+    .stats-title{color:#1976d2;font-size:1.4em;margin-bottom:20px;text-align:center;font-weight:300}
+    .loading{text-align:center;padding:40px;color:#1976d2}
+    .loading-spinner{display:inline-block;width:40px;height:40px;border:4px solid #e3f2fd;border-radius:50%;border-top-color:#1976d2;animation:spin 1s ease-in-out infinite;margin-bottom:15px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .error{background:#ffebee;border:1px solid #e57373;color:#c62828;padding:15px;border-radius:8px;margin:20px 0}
+    .legend{position:absolute;bottom:20px;right:20px;background:rgba(255,255,255,.95);padding:15px;border-radius:10px;box-shadow:0 4px 15px rgba(0,0,0,.2);z-index:1000}
+    .legend h4{margin-bottom:10px;color:#1976d2;font-size:.9em;text-align:center}
+    .legend-item{display:flex;align-items:center;margin-bottom:5px}
+    .legend-color{width:16px;height:16px;border-radius:50%;margin-right:8px;border:2px solid rgba(0,0,0,.2)}
+    .legend-color.high{background-color:#4caf50}.legend-color.medium{background-color:#f57c00}.legend-color.low{background-color:#d32f2f}
+    .viewport-info{position:absolute;bottom:20px;left:20px;background:rgba(255,255,255,.95);padding:10px 15px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.1);z-index:1000;font-size:.85em;color:#666}
+    .leaflet-control-locate{background:#1976d2;color:#fff;border-radius:8px;padding:8px 12px;font-size:14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+    .leaflet-control-locate:disabled{background:#999;cursor:not-allowed}
+    @media (max-width:1024px){.controls{flex-direction:column;align-items:center}.zone-buttons{justify-content:center}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>ML Prediction Dashboard</h1>
+      <p>Visualize and analyze machine learning predictions with interactive maps and statistics</p>
+    </div>
+
+    <div class="controls">
+      <div class="form-group">
+        <label for="monthSelect">Select Month</label>
+        <select id="monthSelect" onchange="onMonthChange()">
+          <option value="12-2024-m12">December 2025</option>
+          <option value="1-2025-m1">January 2026</option>
+          <option value="2-2025-m2">February 2026</option>
+          <option value="3-2025-m3">March 2026</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="content-grid">
+      <div class="stats-container">
+        <div class="stats-title">Statistics Dashboard</div>
+        <div id="statsContent">
+          <div class="loading">
+            <div class="loading-spinner"></div>
+            Loading statistics...
+          </div>
+        </div>
+      </div>
+
+      <div class="stats-container">
+        <div id="averagesContent">
+          <div class="loading">
+            <div class="loading-spinner"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="map-section">
+        <div class="zone-filter">
+          <h3>Zone Filter</h3>
+          <div class="zone-buttons">
+            <button class="zone-btn active" data-zone="ALL">All Zones</button>
+            <button class="zone-btn" data-zone="MAC">MAC</button>
+            <button class="zone-btn" data-zone="MKB">MKB</button>
+            <button class="zone-btn" data-zone="MKS">MKS</button>
+            <button class="zone-btn" data-zone="MPDC">MPDC</button>
+            <button class="zone-btn" data-zone="MPK">MPK</button>
+            <button class="zone-btn" data-zone="MPL">MPL</button>
+            <button class="zone-btn" data-zone="MPV">MPV</button>
+            <button class="zone-btn" data-zone="SB">SB</button>
+          </div>
+        </div>
+
+        <div class="map-container">
+          <div id="map"></div>
+          <div class="map-info">
+            <div id="currentModel">Model: m12</div>
+            <div id="currentMonth">Month: December 2025</div>
+          </div>
+          <div class="viewport-info">
+            <div id="viewportInfo">Move map to load data</div>
+          </div>
+          <div class="legend">
+            <h4>Prediction Levels</h4>
+            <div class="legend-item"><div class="legend-color high"></div><span>High (&gt; 12.0)</span></div>
+            <div class="legend-item"><div class="legend-color medium"></div><span>Medium (10.0 - 12.0)</span></div>
+            <div class="legend-item"><div class="legend-color low"></div><span>Low (&lt; 10.0)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+  <script>
+    let map, markersLayer, factoryMarkersLayer;
+    let allPredictionsData = [];
+    let currentZoneFilter = 'ALL';
+    let currentModel = 'm12';
+    let currentDisplayMonth = 6;
+    let currentYear = 2024;
+    let isLoading = false;
+    let userLocationMarker = null;
+    let moveDebounceTimer = null;
+
+    let allowMapRequests = false;
+    let isSequenceRunning = false;
+
+    const API_BASE = 'http://localhost:1290';
+
+    const factoryLocations = {
+      SB:{lat:14.862504078842958,lng:100.358549932741414},
+      MPDC:{lat:14.84514,lng:99.75922},
+      MAC:{lat:15.828701000429223,lng:104.47471520283926},
+      MPV:{lat:16.67827120388637,lng:102.44576336099253},
+      MPL:{lat:7.067065149704857,lng:117.59963900704362},
+      MPK:{lat:16.4840064769643,lng:102.1212705588527},
+      MKS:{lat:16.462588608501633,lng:104.04029264983633},
+      MKB:{lat:16.096672809152835,lng:101.87271858619893}
+    };
+
+    const zoneColors = {
+      'MAC':'#e91e63','MKB':'#9c27b0','MKS':'#673ab7','MPDC':'#3f51b5',
+      'MPK':'#2196f3','MPL':'#00bcd4','MPV':'#009688','SB':'#4caf50'
+    };
+
+    // ====== Map init ======
+    function initMap(){
+      map = L.map('map').setView([14.5,101.0], 17);
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+        attribution:'&copy; Esri', maxZoom: 19
+      }).addTo(map);
+
+      markersLayer = L.layerGroup().addTo(map);
+      factoryMarkersLayer = L.layerGroup().addTo(map);
+      addFactoryMarkers();
+
+      // Locate button control
+      const LocateControl = L.Control.extend({
+        options:{ position:'topright' },
+        onAdd:function(){
+          const btn = L.DomUtil.create('button','leaflet-control-locate');
+          btn.type='button';
+          btn.innerHTML='📍 Find my location';
+          btn.onclick=()=>findMyLocation(btn);
+          return btn;
+        }
+      });
+      map.addControl(new LocateControl());
+
+      // Debounced move handler — จะทำงานเฉพาะเมื่อ allowMapRequests = true
+      map.on('moveend zoomend', ()=>{
+        if (!allowMapRequests) return;
+        if (moveDebounceTimer) clearTimeout(moveDebounceTimer);
+        moveDebounceTimer = setTimeout(loadPredictionsForCurrentView, 350);
+      });
+    }
+
+    function addFactoryMarkers(){
+      Object.entries(factoryLocations).forEach(([zoneName, loc])=>{
+        const factoryIcon = L.divIcon({
+          html:`<div style="
+              width:32px;height:32px;background-image:url('./manufacturing-plant.png');
+              background-size:contain;background-repeat:no-repeat;background-position:center;
+              border:2px solid ${zoneColors[zoneName]||'#1976d2'};
+              border-radius:50%;background-color:#fff;"></div>`,
+          className:'factory-marker', iconSize:[32,32], iconAnchor:[16,16]
+        });
+        const marker = L.marker([loc.lat,loc.lng],{icon:factoryIcon,zIndexOffset:1000});
+        marker.bindPopup(`
+          <div style="text-align:center;">
+            <h4 style="margin:0 0 8px;color:${zoneColors[zoneName]||'#1976d2'}">${zoneName} Factory</h4>
+            <div style="font-size:.9em">${loc.lat.toFixed(6)}, ${loc.lng.toFixed(6)}</div>
+          </div>
+        `);
+        factoryMarkersLayer.addLayer(marker);
+      });
+    }
+
+    function findMyLocation(btn){
+      const b = btn || document.querySelector('.leaflet-control-locate');
+      if (!navigator.geolocation){ alert('Geolocation is not supported.'); return; }
+      b.disabled = true; b.textContent = '📍 Locating...';
+      navigator.geolocation.getCurrentPosition(pos=>{
+        const lat = pos.coords.latitude, lng = pos.coords.longitude;
+        if (userLocationMarker) map.removeLayer(userLocationMarker);
+        const userIcon = L.divIcon({
+          html:'<div style="width:20px;height:20px;background:#ff4444;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.3)"></div>',
+          iconSize:[20,20], iconAnchor:[10,10]
+        });
+        userLocationMarker = L.marker([lat,lng],{icon:userIcon,zIndexOffset:2000})
+          .bindPopup(`<div style="text-align:center;"><strong>Your Location</strong><div style="font-size:.9em">${lat.toFixed(6)}, ${lng.toFixed(6)}</div></div>`)
+          .addTo(map);
+        map.setView([lat,lng], 17);
+        b.disabled=false; b.textContent='📍 Find my location';
+      }, err=>{
+        alert('Unable to retrieve your location.');
+        b.disabled=false; b.textContent='📍 Find my location';
+      },{enableHighAccuracy:true,timeout:5000,maximumAge:0});
+    }
+
+    // ====== Orchestration ======
+    async function runInitialSequence(){
+      if (isSequenceRunning) return;
+      isSequenceRunning = true;
+      allowMapRequests = false;
+
+      // 1) Statistics dashboard
+      await loadStatistics();
+
+      // 2) Individual performance (combined averages)
+      await loadCombinedAverages();
+
+      // 3) Map points within viewport
+      allowMapRequests = true;
+      await loadPredictionsForCurrentView();
+
+      isSequenceRunning = false;
+    }
+
+    async function runChangeSequence(){
+      if (isSequenceRunning) return;
+      isSequenceRunning = true;
+      allowMapRequests = false;           // กัน handler ยิงซ้ำ
+      markersLayer.clearLayers();
+      updateViewportInfo('Waiting for statistics & performance...');
+
+      // 1) Statistics
+      await loadStatistics();
+      // 2) Individual performance
+      await loadCombinedAverages();
+      // 3) Map
+      allowMapRequests = true;
+      await loadPredictionsForCurrentView();
+
+      isSequenceRunning = false;
+    }
+
+    // ====== Month change ======
+    function onMonthChange(){
+      const [month, year, model] = document.getElementById('monthSelect').value.split('-');
+      currentDisplayMonth = 8;            // ตาม requirement เดิม
+      currentYear = parseInt(year,10);
+      currentModel = model;
+      document.getElementById('currentModel').textContent = `Model: ${model}`;
+      document.getElementById('currentMonth').textContent = `Month: ${getMonthName(currentDisplayMonth)} ${year}`;
+      allPredictionsData = [];
+      runChangeSequence();                // ใช้ orchestration ใหม่
+    }
+
+    function getMonthName(m){
+      return ['','January','February','March','April','May','June','July','August','September','October','November','December'][m]
+    }
+
+    // Zone buttons: filter + fly to factory location
+    document.addEventListener('DOMContentLoaded', ()=>{
+      initMap();
+      // เริ่มโหลดแบบเรียงลำดับ
+      runInitialSequence();
+
+      const btns = document.querySelectorAll('.zone-btn');
+      btns.forEach(btn=>{
+        btn.addEventListener('click', function(){
+          btns.forEach(b=>b.classList.remove('active'));
+          this.classList.add('active');
+          currentZoneFilter = this.dataset.zone;
+          if (currentZoneFilter !== 'ALL' && factoryLocations[currentZoneFilter]){
+            const {lat,lng} = factoryLocations[currentZoneFilter];
+            map.flyTo([lat,lng], 17, {duration:0.7});
+          }
+          displayPredictionsInViewport();
+        });
+      });
+    });
+
+    // ====== Load predictions in viewport (with bbox) ======
+    async function loadPredictionsForCurrentView(){
+      if (isLoading) return;
+      if (!allowMapRequests) return;                // เคารพลำดับการโหลด
+      isLoading = true;
+      updateViewportInfo('Loading map data...');
+      try{
+        const {dataYear,startMonth,endMonth} = calculateDateRange(currentDisplayMonth,currentYear);
+
+        const b = map.getBounds();
+        const payload = {
+          year:dataYear, start_month:startMonth, end_month:endMonth,
+          models:[currentModel], zones:"MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB",
+          limit:50000000, display_month:currentDisplayMonth, enable_chunked_processing:true,
+          min_lat:b.getSouth(), min_lng:b.getWest(), max_lat:b.getNorth(), max_lng:b.getEast()
+        };
+
+        const resp = await fetch(`${API_BASE}/predict/grouped`,{
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message || 'Unknown error');
+
+        allPredictionsData = [];
+        if (data.results && data.results.length>0){
+          data.results[0].prediction_groups.forEach(g=>allPredictionsData.push(...g.predictions));
+        }
+        displayPredictionsInViewport();
+      }catch(err){
+        console.error('Error loading predictions:', err);
+        showError(`Failed to load predictions: ${err.message}`);
+        updateViewportInfo('Not found data for current view');
+      }finally{
+        isLoading = false;
+      }
+    }
+
+    function displayPredictionsInViewport(){
+      markersLayer.clearLayers();
+      const bounds = map.getBounds();
+      const filtered = allPredictionsData.filter(p=>{
+        const inBounds = bounds.contains([p.lat, p.lon]);
+        const inZone = (currentZoneFilter==='ALL') || (p.zone===currentZoneFilter);
+        return inBounds && inZone;
+      });
+
+      const limited = filtered.slice(0,1000);
+      let count = 0;
+      limited.forEach(p=>{
+        const color = getPredictionColor(p.prediction);
+        const level = getPredictionLevel(p.prediction);
+        const marker = L.circleMarker([p.lat, p.lon],{
+          radius:4, fillColor:color, color:'#fff', weight:1, opacity:1, fillOpacity:0.8
+        });
+        marker.bindPopup(`
+          <div style="font-family:Arial,sans-serif;">
+            <h4 style="margin:0 0 8px;color:#1976d2;">Plant ID: ${p.plant_id}</h4>
+                <p style="margin:4px 0;"><strong>Model:</strong> ${currentModel}</p>
+                <p style="margin:4px 0;"><strong>Prediction:</strong> ${p.prediction.toFixed(2)}</p>
+                <p style="margin:4px 0;"><strong>Level:</strong> <span style="color:${color};font-weight:bold">${level}</span></p>
+                <p style="margin:4px 0;"><strong>Zone:</strong> ${p.zone}</p>
+                <p style="margin:4px 0;"><strong>Cane Type:</strong> ${p.cane_type}</p>
+                <hr style="margin:8px 0;">
+                <p style="margin:4px 0;"><strong>NDVI:</strong> ${p.ndvi.toFixed(3)}</p>
+                <p style="margin:4px 0;"><strong>NDWI:</strong> ${p.ndwi.toFixed(3)}</p>
+                <p style="margin:4px 0;"><strong>GLI:</strong> ${p.gli.toFixed(3)}</p>
+                <p style="margin:4px 0;"><strong>Precipitation:</strong> ${p.precipitation.toFixed(2)}</p>
+          </div>
+        `);
+        markersLayer.addLayer(marker);
+        count++;
+      });
+      updateViewportInfo(`Showing ${count}/${filtered.length} points (${allPredictionsData.length} total)`);
+    }
+
+    function updateViewportInfo(t){ document.getElementById('viewportInfo').textContent = t; }
+
+    function calculateDateRange(selectedMonth, selectedYear){
+      if (selectedYear === 2024){
+        return { dataYear:2024, startMonth:2, endMonth:8 };
+      } else {
+        return { dataYear:2025, startMonth:Math.max(1,selectedMonth-2), endMonth:Math.min(12,selectedMonth+2) };
+      }
+    }
+
+    function getPredictionColor(v){ if (v>12) return '#4caf50'; if (v>=10) return '#f57c00'; return '#d32f2f'; }
+    function getPredictionLevel(v){ if (v>12) return 'HIGH'; if (v>=10) return 'MEDIUM'; return 'LOW'; }
+
+    // ===== Statistics (NO BBOX) — compute zone stats on client =====
+    async function loadStatistics(){
+      const statsContent = document.getElementById('statsContent');
+      statsContent.innerHTML = '<div class="loading"><div class="loading-spinner"></div>';
+      try{
+        const {dataYear,startMonth,endMonth} = calculateDateRange(currentDisplayMonth,currentYear);
+        const resp = await fetch(`${API_BASE}/predict/grouped`,{
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({
+            year:dataYear, start_month:startMonth, end_month:endMonth,
+            models:[currentModel], zones:"MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB",
+            limit:5000000, display_month:currentDisplayMonth, enable_chunked_processing:true
+          })
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        const data = await resp.json();
+        if (!data.success || !data.results || data.results.length===0){
+          throw new Error(data.message || 'No data available for current model');
+        }
+
+        const modelRes = data.results[0];
+        const flatPreds = [];
+        (modelRes.prediction_groups||[]).forEach(g => {
+          (g.predictions||[]).forEach(p => flatPreds.push(p));
+        });
+        const zoneStats = buildZoneStatsFromPredictions(flatPreds);
+
+        displayModelStatistics({
+          zone_statistics: zoneStats,
+          overall_average: modelRes.overall_average ?? calcOverallAverage(flatPreds),
+          total_predictions: flatPreds.length
+        });
+      }catch(err){
+        console.error('Error loading model statistics:', err);
+        statsContent.innerHTML = `<div class="error">Failed to load statistics: ${err.message}</div>`;
+      }
+    }
+
+    function buildZoneStatsFromPredictions(predictions){
+      const byZone = {};
+      predictions.forEach(p=>{
+        const z = p.zone || 'Unknown';
+        if (!byZone[z]){
+          byZone[z] = { zone:z, total_plantations:0, high:0, medium:0, low:0, sum:0 };
+        }
+        byZone[z].total_plantations++;
+        byZone[z].sum += p.prediction || 0;
+        if (p.prediction > 12) byZone[z].high++;
+        else if (p.prediction >= 10) byZone[z].medium++;
+        else byZone[z].low++;
+      });
+
+      const out = Object.values(byZone).map(v=>{
+        const total = v.total_plantations || 0;
+        return {
+          zone: v.zone,
+          high_prediction_count: v.high,
+          high_prediction_percentage: total ? (v.high/total*100) : 0,
+          medium_prediction_count: v.medium,
+          medium_prediction_percentage: total ? (v.medium/total*100) : 0,
+          low_prediction_count: v.low,
+          low_prediction_percentage: total ? (v.low/total*100) : 0,
+          total_plantations: total,
+          average_prediction: total ? (v.sum/total) : 0
+        };
+      }).sort((a,b)=>a.zone.localeCompare(b.zone));
+
+      return out;
+    }
+
+    function calcOverallAverage(predictions){
+      if (!predictions.length) return 0;
+      const s = predictions.reduce((acc,p)=>acc+(p.prediction||0),0);
+      return s / predictions.length;
+    }
+
+    // ===== Combined averages (NO BBOX) =====
+    async function loadCombinedAverages(){
+      const el = document.getElementById('averagesContent');
+      el.innerHTML = '<div class="loading"><div class="loading-spinner"></div>';
+      try{
+        const resp = await fetch(`${API_BASE}/predict/grouped/averages?start_month=2&end_month=8&models=m1,m2,m3,m12&zones=MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB&limit=50000000&display_month=8`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        const data = await resp.json();
+        if (!data.success) throw new Error(data.message || 'Unknown error occurred');
+        displayCombinedAverages(data);
+      }catch(err){
+        console.error('Error loading combined averages:', err);
+        el.innerHTML = `<div class="error">Failed to load combined analysis: ${err.message}</div>`;
+      }
+    }
+
+    function displayCombinedAverages(data){
+      const averagesContent = document.getElementById('averagesContent');
+      const combined = data.combined_average_result;
+      const individual = data.individual_model_results;
+      const zoneColorsLocal = zoneColors;
+
+      averagesContent.innerHTML = `
+        <div style="margin-bottom:20px;">
+          <h4 style="color:#1976d2;text-align:center;margin-bottom:15px;">Individual Models Performance</h4>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px;">
+            ${individual.map(m=>`
+              <div style="padding:10px;background:${m.model_name===currentModel?'#e3f2fd':'#f8f9fa'};border-radius:8px;border:${m.model_name===currentModel?'2px solid #1976d2':'1px solid #ddd'};">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                  <span style="font-weight:bold;color:#1976d2;">${m.model_name.toUpperCase()}${m.model_name===currentModel?' (Current)':''}</span>
+                  <span style="font-weight:bold;color:#1976d2;">${m.overall_average.toFixed(2)}</span>
+                </div>
+                <div style="font-size:.8em;color:#666;">
+                  <span style="color:#4caf50;">High: ${m.high_percentage.toFixed(2)}%</span> |
+                  <span style="color:#f57c00;">Med: ${m.medium_percentage.toFixed(2)}%</span> |
+                  <span style="color:#d32f2f;">Low: ${m.low_percentage.toFixed(2)}%</span>
+                </div>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <h4 style="color:#1976d2;text-align:center;margin-bottom:15px;">Combined Zone Averages</h4>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;">
+            ${Object.entries(combined.combined_zone_averages).map(([z,avg])=>`
+              <div style="text-align:center;padding:8px;background:#f5f5f5;border-radius:6px;border-left:3px solid ${zoneColorsLocal[z]||'#1976d2'};">
+                <div style="font-weight:bold;color:#1976d2;font-size:.9em;">${z}</div>
+                <div style="font-weight:bold;color:#333;font-size:1.1em;">${(+avg).toFixed(2)}</div>
+              </div>`).join('')}
+          </div>
+        </div>
+
+        <div style="padding:12px;background:#f8f9fa;border-radius:8px;border-left:4px solid #4caf50;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;font-size:.85em;">
+            <div><div style="color:#666;margin-bottom:3px;">Models Average:</div><div style="font-weight:bold;font-size:1.1em;color:#1976d2;">${(+combined.overall_average_of_models).toFixed(2)}</div></div>
+            <div><div style="color:#666;margin-bottom:3px;">Combined Average:</div><div style="font-weight:bold;font-size:1.1em;color:#1976d2;">${(+combined.combined_prediction_average).toFixed(2)}</div></div>
+            <div><div style="color:#666;margin-bottom:3px;">Best Model:</div><div style="font-weight:bold;color:#4caf50;">${combined.model_comparison.highest_average?.model_name?.toUpperCase()||'-'} (${(+combined.model_comparison.highest_average?.overall_average||0).toFixed(2)})</div></div>
+            <div><div style="color:#666;margin-bottom:3px;">Standard Deviation:</div><div style="font-weight:bold;color:#1976d2;">${(+combined.model_comparison.standard_deviation).toFixed(2)}</div></div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ====== Statistics rendering (uses client-built zone stats) ======
+    function displayModelStatistics(modelResultLike){
+      const statsContent = document.getElementById('statsContent');
+      const zoneStats = modelResultLike.zone_statistics || [];
+      const overallAvg = +modelResultLike.overall_average || 0;
+
+      if (!zoneStats.length){
+        statsContent.innerHTML = `<div class="error">No statistics available for current selection.</div>`;
+        return;
+      }
+
+      const best = zoneStats.reduce((best,z)=>z.average_prediction>best.average_prediction?z:best, zoneStats[0]);
+
+      statsContent.innerHTML = `
+        <div style="margin-top:15px;">
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:.8em;">
+              <thead>
+                <tr style="background:#f5f5f5;border-bottom:2px solid #1976d2;">
+                  <th style="padding:6px;text-align:left;color:#1976d2;">Zone</th>
+                  <th style="padding:6px;text-align:center;color:#1976d2;">Total</th>
+                  <th style="padding:6px;text-align:center;color:#4caf50;">High (&gt;12)</th>
+                  <th style="padding:6px;text-align:center;color:#f57c00;">Medium (10-12)</th>
+                  <th style="padding:6px;text-align:center;color:#d32f2f;">Low (&lt;10)</th>
+                  <th style="padding:6px;text-align:center;color:#1976d2;">Avg Prediction</th>
+                  <th style="padding:6px;text-align:center;color:#1976d2;">Performance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${zoneStats.map(z=>`
+                  <tr style="border-bottom:1px solid #eee;">
+                    <td style="padding:6px;font-weight:bold;">${z.zone}</td>
+                    <td style="padding:6px;text-align:center;">${z.total_plantations}</td>
+                    <td style="padding:6px;text-align:center;color:#4caf50;"><strong>${z.high_prediction_count}</strong> (${z.high_prediction_percentage.toFixed(2)}%)</td>
+                    <td style="padding:6px;text-align:center;color:#f57c00;"><strong>${z.medium_prediction_count}</strong> (${z.medium_prediction_percentage.toFixed(2)}%)</td>
+                    <td style="padding:6px;text-align:center;color:#d32f2f;"><strong>${z.low_prediction_count}</strong> (${z.low_prediction_percentage.toFixed(2)}%)</td>
+                    <td style="padding:6px;text-align:center;font-weight:bold;">${(+z.average_prediction).toFixed(2)}</td>
+                    <td style="padding:6px;text-align:center;">
+                      <div style="display:flex;width:100%;height:18px;background:#e0e0e0;border-radius:9px;overflow:hidden;">
+                        <div style="width:${z.high_prediction_percentage}%;background:#4caf50;height:100%"></div>
+                        <div style="width:${z.medium_prediction_percentage}%;background:#f57c00;height:100%"></div>
+                        <div style="width:${z.low_prediction_percentage}%;background:#d32f2f;height:100%"></div>
+                      </div>
+                      <div style="font-size:.7em;margin-top:2px;">
+                        <span style="color:#4caf50;">High: ${z.high_prediction_percentage.toFixed(2)}%</span> |
+                        <span style="color:#f57c00;">Med: ${z.medium_prediction_percentage.toFixed(2)}%</span> |
+                        <span style="color:#d32f2f;">Low: ${z.low_prediction_percentage.toFixed(2)}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="margin-top:20px;padding:12px;background:#f8f9fa;border-radius:8px;border-left:4px solid #1976d2;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:.85em;">
+            <div>
+              <div style="color:#666;margin-bottom:3px;">Overall Average:</div>
+              <div style="font-weight:bold;font-size:1.1em;color:#1976d2;">${overallAvg.toFixed(2)}</div>
+            </div>
+            <div>
+              <div style="color:#666;margin-bottom:3px;">Best Performing Zone:</div>
+              <div style="font-weight:bold;color:#4caf50;">
+                ${best.zone} (${(+best.average_prediction).toFixed(2)})
+              </div>
+            </div>
+            <div>
+              <div style="color:#666;margin-bottom:3px;">Zones Analyzed:</div>
+              <div style="font-weight:bold;color:#1976d2;">${zoneStats.length} zones</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function showError(msg){
+      const d=document.createElement('div'); d.className='error'; d.textContent=msg;
+      const container=document.querySelector('.container');
+      container.insertBefore(d, container.firstChild.nextSibling);
+      setTimeout(()=>d.remove(), 10000);
+    }
+  </script>
+</body>
+</html>

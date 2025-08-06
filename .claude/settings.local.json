@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile:*)",
+      "Bash(cat:*)",
+      "Bash(python -c:*)",
+      "Bash(curl:*)",
+      "Bash(nul)",
+      "Bash(python main-ml.py:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(dir:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

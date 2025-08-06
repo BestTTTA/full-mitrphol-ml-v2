@@ -1,0 +1,4 @@
+ls -la models-ml/
+
+# Copy files to running container
+docker cp models-ml/. <container_name_or_id>:/app/models-ml/

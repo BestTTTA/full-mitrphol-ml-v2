@@ -500,7 +500,7 @@
         // รายการโมเดลพื้นฐานที่อยากเปรียบเทียบ
         const bases = ['m1','m2','m3','m12'];
         const modelsParam = bases.map(b => selectedModelId(b)).join(',');
-        const resp = await fetch(`/predict/grouped/averages?start_month=2&end_month=8&models=${encodeURIComponent(modelsParam)}&zones=MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB&limit=50000000&display_month=8`);
+        const resp = await fetch(`/predict/grouped/averages?start_month=2&end_month=10&models=${encodeURIComponent(modelsParam)}&zones=MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB&limit=50000000&display_month=10`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
         const data = await resp.json();
         if (!data.success) throw new Error(data.message || 'Unknown error occurred');

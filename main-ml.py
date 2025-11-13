@@ -156,10 +156,10 @@ MODEL_YEAR_CONFIG = {
 logger.info(f"MODEL_YEAR_CONFIG loaded: {MODEL_YEAR_CONFIG}")
 
 MODEL_MONTH_RANGE = {
-    "m12": os.getenv("M12_MONTH_RANGE", "2-8"),
-    "m1": os.getenv("M1_MONTH_RANGE", "2-8"),
-    "m2": os.getenv("M2_MONTH_RANGE", "2-8"),
-    "m3": os.getenv("M3_MONTH_RANGE", "2-8"),
+    "m12": os.getenv("M12_MONTH_RANGE", "2-10"),
+    "m1": os.getenv("M1_MONTH_RANGE", "2-10"),
+    "m2": os.getenv("M2_MONTH_RANGE", "2-10"),
+    "m3": os.getenv("M3_MONTH_RANGE", "2-10"),
 }
 
 # Model-specific feature cache configuration
@@ -172,16 +172,16 @@ def get_model_month_range(model_name: str) -> tuple[int, int]:
     ดึง start_month และ end_month สำหรับ model ที่ระบุ
     Returns: (start_month, end_month)
     """
-    range_str = MODEL_MONTH_RANGE.get(model_name, "2-8")  # default 2-8
+    range_str = MODEL_MONTH_RANGE.get(model_name, "2-10")  
     try:
         start, end = map(int, range_str.split("-"))
         # Validate range
         if not (1 <= start <= 12 and 1 <= end <= 12 and start <= end):
-            logger.warning(f"Invalid month range for {model_name}: {range_str}, using default 2-8")
+            logger.warning(f"Invalid month range for {model_name}: {range_str}, using default ")
             return (2, 8)
         return (start, end)
     except Exception as e:
-        logger.error(f"Error parsing month range for {model_name}: {e}, using default 2-8")
+        logger.error(f"Error parsing month range for {model_name}: {e}, using default")
         return (2, 8)
 
 def get_month_names_from_range(start_month: int, end_month: int) -> List[str]:
@@ -918,7 +918,7 @@ async def get_base_raw_cached_db(
         )
 
         # Cache the result
-        await set_to_cache(cache_key, {"data": data}, ttl=CACHE_TTL)
+        await set_to_cache(cache_key, data, ttl=CACHE_TTL)
 
         if RAW_BASE_USE_MEMORY:
             RAW_BASE_MEM_CACHE[cache_key] = data
@@ -1540,7 +1540,9 @@ async def process_model_predictions(
             total_predictions=total_preds_count
         )
     except Exception as e:
+        import traceback
         logger.error(f"process_model_predictions error: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         requested_zones = [z.strip() for z in (zones_str or "").split(",") if z.strip()]
         empty_stats = [] if not include_zone_stats else [
             ZoneStatistics(zone=z, high_prediction_count=0, high_prediction_percentage=0.0,
@@ -1833,12 +1835,19 @@ async def get_individual_models_performance(
 
     # ตรวจสอบ cache ก่อน
     cached = await get_from_cache(cache_key)
-    if cached and "data" in cached:
+    if cached:
         logger.info(f"[Individual Models Performance] Cache HIT: {cache_key}")
-        res = cached["data"]
-        res["cached"] = True
-        res["cache_key"] = cache_key
-        return res
+        # Check if cached is a dict or already the response object
+        if isinstance(cached, dict):
+            if "data" in cached:
+                res = cached["data"]
+            else:
+                res = cached
+            res["cached"] = True
+            res["cache_key"] = cache_key
+            return res
+        else:
+            logger.warning(f"[Individual Models Performance] Invalid cache format (type={type(cached)}), ignoring cache")
 
     logger.info(f"[Individual Models Performance] Cache MISS: {cache_key}")
 
@@ -1956,6 +1965,87 @@ async def get_model_averages(
     avg_resp.cache_key = cache_key
     await set_to_cache(cache_key, avg_resp.dict(), ttl=min(CACHE_TTL, 3600))
     return avg_resp
+
+@app.get("/predict/by-zone", response_model=GroupedPredictionResponse)
+async def predict_by_zone(
+    zone: str,
+    year: int = 2025,
+    start_month: int = 2,
+    end_month: int = 10,
+    model: str = "m12",
+    display_month: Optional[int] = None
+):
+    """
+    Get predictions for a specific zone from cache (fast)
+    Uses cached data from process_model_predictions_streaming_db
+    """
+    start_t = time.time()
+
+    # Use end_month as display_month if not specified
+    if display_month is None:
+        display_month = end_month
+
+    # Generate cache key to check if we already have this data
+    cache_key = generate_cache_key(
+        "predict_by_zone_v1",
+        zone=zone, year=year, start_month=start_month, end_month=end_month,
+        model=model, display_month=display_month,
+        db_url_hash=hashlib.md5(DATABASE_URL.encode()).hexdigest()[:8]
+    )
+
+    # Check cache first
+    cached = await get_from_cache(cache_key)
+    if cached and "data" in cached:
+        res = cached["data"]
+        res["cached"] = True
+        res["cache_key"] = cache_key
+        logger.info(f"[By Zone] Cache HIT for zone={zone}, model={model}")
+        return res
+
+    logger.info(f"[By Zone] Processing zone={zone}, model={model}, year={year}, months={start_month}-{end_month}")
+
+    # Get raw data from month-based cache
+    raw_data = await get_multi_month_data_cached(year, start_month, end_month, zone)
+
+    if not raw_data:
+        raise HTTPException(status_code=404, detail=f"No data found for zone {zone}")
+
+    # Process predictions with full detail (returns individual predictions)
+    result = await process_model_predictions(
+        model_name=model,
+        raw_data=raw_data,
+        display_month=display_month,
+        enable_chunked=True,
+        zones_str=zone,
+        include_zone_stats=True,
+        end_month=end_month,
+        year=year,
+        start_month=start_month
+    )
+
+    response = GroupedPredictionResponse(
+        success=True,
+        message=f"Loaded {result.total_predictions} predictions for {zone} using cached data",
+        results=[result],
+        cached=False,
+        cache_key=cache_key,
+        processing_stats={
+            "total_time_sec": round(time.time() - start_t, 3),
+            "zone": zone,
+            "model": model,
+            "year": year,
+            "month_range": f"{start_month}-{end_month}",
+            "total_predictions": result.total_predictions,
+            "cache_strategy": "month-based",
+            "database_url": DATABASE_URL.replace(db_url.password or "", "***") if db_url.password else DATABASE_URL
+        }
+    )
+
+    # Cache the result (1 hour TTL)
+    await set_to_cache(cache_key, response.dict(), ttl=3600)
+    logger.info(f"[By Zone] Completed zone={zone}, predictions={result.total_predictions}, time={response.processing_stats['total_time_sec']}s")
+
+    return response
 
 @app.post("/predict/grouped", response_model=GroupedPredictionResponse)
 async def predict_grouped(request: GroupedPredictionRequest):

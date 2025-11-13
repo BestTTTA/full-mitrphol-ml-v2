@@ -471,7 +471,7 @@
       const el = document.getElementById('averagesContent');
       el.innerHTML = '<div class="loading"><div class="loading-spinner"></div>';
       try{
-        const resp = await fetch(`${API_BASE}/predict/grouped/averages?start_month=2&end_month=8&models=m1,m2,m3,m12&zones=MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB&limit=50000000&display_month=8`);
+        const resp = await fetch(`${API_BASE}/predict/grouped/averages?start_month=2&end_month=10&models=m1,m2,m3,m12&zones=MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB&limit=50000000&display_month=10`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
         const data = await resp.json();
         if (!data.success) throw new Error(data.message || 'Unknown error occurred');

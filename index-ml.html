@@ -116,7 +116,7 @@
           <div class="map-info">
             <div id="currentModel">Model: m12</div>
             <div id="currentMonth">Month: December 2025</div>
-            <div id="currentDataYear" style="font-size:0.85em;color:#666;">Data: 2025 (M2-M8)</div>
+            <div id="currentDataYear" style="font-size:0.85em;color:#666;">Data: 2025 (M2-M10)</div>
           </div>
           <div class="viewport-info">
             <div id="viewportInfo">Move map to load data</div>
@@ -174,6 +174,10 @@ Step 3: Map ready - move the map to load predictions</div>
 
     let allowMapRequests = false;
     let isSequenceRunning = false;
+
+    // Zone-specific cache: stores all predictions for each zone
+    let zoneDataCache = {}; // { 'MAC': [...], 'MKB': [...], ... }
+    let isLoadingZone = {}; // { 'MAC': false, 'MKB': false, ... }
 
     // Load configuration from backend
     async function loadConfig() {
@@ -304,8 +308,17 @@ Step 3: Map ready - move the map to load predictions</div>
       map.addControl(new LocateControl());
 
       // Debounced move handler — จะทำงานเฉพาะเมื่อ allowMapRequests = true
+      // ถ้าเลือก single zone จะไม่ทำ viewport loading แต่แสดงผลจาก cache
       map.on('moveend zoomend', ()=>{
         if (!allowMapRequests) return;
+
+        // ถ้าเลือก single zone ให้แสดงผลจาก cache เท่านั้น ไม่ต้องโหลดใหม่
+        if (currentZoneFilter !== 'ALL' && zoneDataCache[currentZoneFilter]) {
+          displayPredictionsInViewport();
+          return;
+        }
+
+        // สำหรับ ALL zones ให้โหลดตาม viewport
         if (moveDebounceTimer) clearTimeout(moveDebounceTimer);
         moveDebounceTimer = setTimeout(loadPredictionsForCurrentView, 350);
       });
@@ -378,12 +391,12 @@ Step 3: Map ready - move the map to load predictions</div>
 
         // 3) เปิดใช้งาน map requests (ให้ user เลื่อนแผนที่เองเพื่อ load ข้อมูล)
         setStepActive('map');
-        updateProgressInfo('Map ready - move map to load data...');
+        updateProgressInfo('Map ready - move map to load data (All Zones mode)...');
         allowMapRequests = true;
-        updateViewportInfo('Move map to load data');
+        updateViewportInfo('Move map to load data (All Zones - viewport loading enabled)');
         setStepCompleted('map');
 
-        updateProgressInfo('All data loaded successfully! Move the map to view predictions.');
+        updateProgressInfo('All data loaded successfully! Move the map to view predictions for All Zones.');
         setTimeout(hideProgress, 500);
       } catch (err) {
         updateProgressInfo('Error loading data: ' + err.message);
@@ -419,14 +432,22 @@ Step 3: Map ready - move the map to load predictions</div>
         await loadStatistics();
         setStepCompleted('statistics');
 
-        // 3) เปิดใช้งาน map requests (ให้ user เลื่อนแผนที่เพื่อ load ข้อมูลใหม่)
+        // 3) เปิดใช้งาน map requests
         setStepActive('map');
-        updateProgressInfo('Map ready - move map to reload data...');
         allowMapRequests = true;
-        updateViewportInfo('Move map to load new data');
-        setStepCompleted('map');
 
-        updateProgressInfo('Update complete! Move the map to reload predictions.');
+        // ถ้าเลือก single zone อยู่ ให้โหลดข้อมูล zone ใหม่
+        if (currentZoneFilter !== 'ALL') {
+          updateProgressInfo(`Loading ${currentZoneFilter} zone data...`);
+          await loadZoneData(currentZoneFilter);
+          displayPredictionsInViewport();
+          updateProgressInfo(`${currentZoneFilter} zone data loaded!`);
+        } else {
+          updateProgressInfo('Map ready - move map to reload data...');
+          updateViewportInfo('Move map to load new data');
+        }
+
+        setStepCompleted('map');
         setTimeout(hideProgress, 500);
       } catch (err) {
         updateProgressInfo('Error updating data: ' + err.message);
@@ -445,6 +466,12 @@ Step 3: Map ready - move the map to load predictions</div>
       document.getElementById('currentModel').textContent = `Model: ${model}`;
       document.getElementById('currentMonth').textContent = `Month: ${getMonthName(currentDisplayMonth)} ${year}`;
       allPredictionsData = [];
+
+      // Clear zone cache when model/month changes
+      zoneDataCache = {};
+      isLoadingZone = {};
+      console.log('Zone cache cleared due to model/month change');
+
       runChangeSequence();                // ใช้ orchestration ใหม่
     }
 
@@ -463,18 +490,122 @@ Step 3: Map ready - move the map to load predictions</div>
 
       const btns = document.querySelectorAll('.zone-btn');
       btns.forEach(btn=>{
-        btn.addEventListener('click', function(){
-          btns.forEach(b=>b.classList.remove('active'));
+        btn.addEventListener('click', async function(){
+          const newZone = this.dataset.zone;
+
+          // If switching to a specific zone and it's not cached, show loading
+          if (newZone !== 'ALL' && newZone !== currentZoneFilter && !zoneDataCache[newZone]) {
+            // Show loading state
+            this.disabled = true;
+            this.style.opacity = '0.6';
+            this.innerHTML = `${newZone} <span style="font-size:0.8em;">(Loading...)</span>`;
+          }
+
+          btns.forEach(b=>{
+            b.classList.remove('active');
+            if (b !== this) {
+              b.disabled = false;
+              b.style.opacity = '1';
+              b.textContent = b.dataset.zone === 'ALL' ? 'All Zones' : b.dataset.zone;
+            }
+          });
           this.classList.add('active');
-          currentZoneFilter = this.dataset.zone;
+
+          // If switching to a specific zone, load all its data
+          if (newZone !== 'ALL' && newZone !== currentZoneFilter) {
+            await loadZoneData(newZone);
+          }
+
+          // Restore button state
+          this.disabled = false;
+          this.style.opacity = '1';
+          this.textContent = newZone === 'ALL' ? 'All Zones' : newZone;
+          this.classList.add('active');
+
+          currentZoneFilter = newZone;
+
           if (currentZoneFilter !== 'ALL' && factoryLocations[currentZoneFilter]){
             const {lat,lng} = factoryLocations[currentZoneFilter];
-            map.flyTo([lat,lng], 17, {duration:0.7});
+            // Use a wider zoom to see more of the zone initially
+            const targetZoom = Math.max(map.getZoom(), 12); // At least zoom 12
+            map.flyTo([lat,lng], targetZoom, {duration:0.7});
+            // Wait for flyTo animation to complete before displaying
+            setTimeout(() => {
+              displayPredictionsInViewport();
+            }, 800); // Wait slightly longer than flyTo duration
+          } else {
+            // For "All Zones", display immediately
+            displayPredictionsInViewport();
           }
-          displayPredictionsInViewport();
         });
       });
     });
+
+    // ====== Load all data for a specific zone and cache it ======
+    async function loadZoneData(zoneName) {
+      // Check if already cached
+      if (zoneDataCache[zoneName] && zoneDataCache[zoneName].length > 0) {
+        console.log(`Zone ${zoneName} data already cached (${zoneDataCache[zoneName].length} records)`);
+        return;
+      }
+
+      // Check if already loading
+      if (isLoadingZone[zoneName]) {
+        console.log(`Zone ${zoneName} is already loading, skipping...`);
+        return;
+      }
+
+      isLoadingZone[zoneName] = true;
+      updateViewportInfo(`Loading all ${zoneName} zone data (no viewport limit)...`);
+
+      try {
+        const {dataYear,startMonth,endMonth} = calculateDateRange(currentDisplayMonth,currentYear);
+
+        // Use new fast endpoint for single zone (uses cache)
+        const url = `/predict/by-zone?zone=${zoneName}&year=${dataYear}&start_month=${startMonth}&end_month=${endMonth}&model=${currentModel}&display_month=${currentDisplayMonth}`;
+        console.log(`Loading zone ${zoneName} from cache-optimized endpoint:`, url);
+
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        const data = await resp.json();
+        console.log(`Zone ${zoneName} API response:`, data);
+        if (!data.success) throw new Error(data.message || 'Unknown error');
+
+        // Extract predictions
+        let zonePredictions = [];
+        if (data.results && data.results.length>0){
+          console.log(`Zone ${zoneName}: Found ${data.results.length} model results`);
+          data.results[0].prediction_groups.forEach(g=>{
+            console.log(`  Group ${g.level}: ${g.predictions.length} predictions`);
+            zonePredictions.push(...g.predictions);
+          });
+        } else {
+          console.warn(`Zone ${zoneName}: No results found in API response`);
+        }
+
+        // Deduplicate by plant_id
+        const uniquePredictions = new Map();
+        zonePredictions.forEach(p => {
+          const plantId = p.plant_id || `${p.lat}_${p.lon}`;
+          if (!uniquePredictions.has(plantId)) {
+            uniquePredictions.set(plantId, p);
+          }
+        });
+        zonePredictions = Array.from(uniquePredictions.values());
+
+        // Cache the zone data
+        zoneDataCache[zoneName] = zonePredictions;
+        console.log(`Zone ${zoneName} cached: ${zonePredictions.length} unique records`);
+
+        updateViewportInfo(`${zoneName}: Loaded ${zonePredictions.length} total records (cached - no viewport loading)`);
+      } catch(err) {
+        console.error(`Error loading zone ${zoneName}:`, err);
+        showError(`Failed to load zone ${zoneName}: ${err.message}`);
+        updateViewportInfo(`Error loading ${zoneName}`);
+      } finally {
+        isLoadingZone[zoneName] = false;
+      }
+    }
 
     // ====== Load predictions in viewport (with bbox) ======
     async function loadPredictionsForCurrentView(){
@@ -546,13 +677,34 @@ Step 3: Map ready - move the map to load predictions</div>
 
       markersLayer.clearLayers();
       const bounds = map.getBounds();
-      const filtered = allPredictionsData.filter(p=>{
+
+      // Determine data source based on filter
+      let dataSource = [];
+      if (currentZoneFilter !== 'ALL' && zoneDataCache[currentZoneFilter]) {
+        // Use cached zone data - show ALL points for the zone
+        dataSource = zoneDataCache[currentZoneFilter];
+        console.log(`Using cached data for zone ${currentZoneFilter}: ${dataSource.length} records`);
+      } else {
+        // Use viewport data (All Zones or no cache)
+        dataSource = allPredictionsData;
+        console.log(`Using viewport data: ${dataSource.length} records (currentZoneFilter=${currentZoneFilter})`);
+      }
+
+      console.log(`Map bounds:`, bounds);
+      console.log(`Filtering ${dataSource.length} records...`);
+
+      // Filter by bounds and zone
+      const filtered = dataSource.filter(p=>{
         const inBounds = bounds.contains([p.lat, p.lon]);
         const inZone = (currentZoneFilter==='ALL') || (p.zone===currentZoneFilter);
         return inBounds && inZone;
       });
 
-      const limited = filtered.slice(0,1000);
+      console.log(`After filtering: ${filtered.length} records in bounds and zone`);
+
+      // Apply limit only for All Zones
+      const shouldLimit = (currentZoneFilter === 'ALL');
+      const limited = shouldLimit ? filtered.slice(0,1000) : filtered;
       let count = 0;
       let reopenMarker = null;
 
@@ -646,17 +798,23 @@ Step 3: Map ready - move the map to load predictions</div>
         }, 150);
       }
 
-      updateViewportInfo(`Showing ${count}/${filtered.length} points (${allPredictionsData.length} total)`);
+      // Update viewport info based on current mode
+      if (currentZoneFilter !== 'ALL' && zoneDataCache[currentZoneFilter]) {
+        const totalZoneData = zoneDataCache[currentZoneFilter].length;
+        updateViewportInfo(`${currentZoneFilter}: Showing ${count}/${filtered.length} in view (${totalZoneData} total cached - no viewport loading)`);
+      } else {
+        updateViewportInfo(`All Zones: Showing ${count}/${filtered.length} in viewport (${allPredictionsData.length} loaded - move map to load more)`);
+      }
     }
 
     function updateViewportInfo(t){ document.getElementById('viewportInfo').textContent = t; }
 
     function calculateDateRange(selectedMonth, selectedYear){
-      // ใช้ config จาก backend: month range 2-8 สำหรับทุก model ในปี 2025
+
       return {
         dataYear: selectedYear,
         startMonth: 2,
-        endMonth: 8
+        endMonth: 10
       };
     }
 
@@ -808,7 +966,7 @@ Step 3: Map ready - move the map to load predictions</div>
       el.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Loading Individual Models Performance...</p>';
       try{
         // เรียก endpoint ใหม่สำหรับ Individual models performance
-        const resp = await fetch(`/predict/individual-models-performance?year=${currentYear}&start_month=2&end_month=8&models=m1,m2,m3,m12&zones=MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB&display_month=8`);
+        const resp = await fetch(`/predict/individual-models-performance?year=${currentYear}&start_month=2&end_month=10&models=m1,m2,m3,m12&zones=MAC,MKB,MKS,MPDC,MPK,MPL,MPV,SB&display_month=10`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
         const data = await resp.json();
         if (!data.success) throw new Error(data.message || 'Unknown error occurred');

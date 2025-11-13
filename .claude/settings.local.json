@@ -9,7 +9,10 @@
       "Bash(python main-ml.py:*)",
       "Bash(netstat:*)",
       "Bash(findstr:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(del /Q cache-v2*individual_models_perf*.pkl 2)",
+      "Bash(del \"C:\\Users\\User\\Best\\full-mitrphol-ml-v2\\cache-v2\\ml_predict_individual_models_perf_v1_b1940691db9b1582f957bd9e7246e0ce.pkl\")",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []
